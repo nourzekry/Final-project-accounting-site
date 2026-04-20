@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Journal Entries - Accounting System</title>
+  
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+  
+  <link rel="stylesheet" href="style.css" />
+  <style>
+    :root {
+      --green: #2ecc71;
+      --red: #e74c3c;
+      --border: #ddd;
+      --surface2: #f9f9f9;
+    }
+    .line-item { 
+      display: grid; 
+      grid-template-columns: 2.5fr 1fr 1fr auto; 
+      gap: 10px; 
+      margin-bottom: 10px;
+    }
+    .side-debit { color: var(--green) !important; font-weight: 700; }
+    .side-credit { color: var(--red) !important; font-weight: 700; }
+    .badge-error { background: var(--red); color: white; padding: 5px; border-radius: 4px; }
+  </style>
+</head>
+<body>
+
+
+<nav class="navbar">
+  <div class="logo">⚖️ <span>Accounting</span> System</div>
+  <ul class="nav-links">
+    <li><a href="index.html" class="active">📝 Entries</a></li>
+    <li><a href="Trial-balance.html">📊 Trial Balance</a></li>
+    <li><a href="income-statement.html">📈 Income Statement</a></li>
+    <li><a href="balance-sheet.html">🏦 Balance Sheet</a></li>
+    <li><a href="dashboard.html">🖥️ Dashboard</a></li>
+    <li><a href="accountsmanager.html">🗂️ Accounts</a></li>
+  </ul>
+</nav>
+
+
+<div class="page">
+  <div class="page-header">
+    <h1>📝 Daily Journal Entries</h1>
+    <p>Every entry must balance: Total Debits = Total Credits</p>
+    <div style="margin-top: 10px;">
+        <button class="btn btn-primary" onclick="document.getElementById('excelInput').click()">📤 Import from Excel</button>
+        <input type="file" id="excelInput" style="display:none" accept=".xlsx, .xls" onchange="handleExcel(event)" />
+    </div>
+  </div>
+
+  <div class="card" style="margin-bottom:1.5rem">
+    <div class="card-title">➕ New Entry</div>
+
+    <div class="form-grid" style="margin-bottom:1rem">
+      <div class="form-group">
+        <label>📅 Date</label>
+        <input type="date" id="entryDate" />
+      </div>
+      <div class="form-group" style="grid-column: span 2">
+        <label>📌 Description</label>
+        <input type="text" id="entryDesc" placeholder="e.g., Office Rent Payment" />
+      </div>
+      <div class="form-group">
+        <label>🔢 Entry ID</label>
+        <input type="text" id="entryNumber" readonly style="opacity:0.6" />
+      </div>
+    </div>
+    <div id="lineItems"></div>
+
+    <button class="btn btn-ghost" onclick="addLine()" style="margin-top:0.5rem; margin-bottom:1.2rem">
+      ➕ Add Line
+    </button>
+
+    <div style="display:flex; gap:1rem; justify-content:flex-end; flex-wrap:wrap; margin-bottom:1rem">
+      <div class="stat-card">
+        <div class="stat-label">Total Debit</div>
+        <div class="stat-value side-debit" id="totalDebit">0.00</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Total Credit</div>
+        <div class="stat-value side-credit" id="totalCredit">0.00</div>
+      </div>
+      <div class="stat-card" id="balanceCard">
+        <div class="stat-label">Difference</div>
+        <div class="stat-value" id="balanceDiff">0.00</div>
+      </div>
+    </div>
+
+    <div id="formAlert"></div>
+
+    <div style="display:flex; gap:0.75rem; justify-content:flex-end">
+      <button class="btn btn-ghost" onclick="clearForm()">🗑️ Clear</button>
+      <button class="btn btn-primary" onclick="saveEntry()">💾 Save Entry</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card" style="margin-bottom:1rem">
+      <div class="form-group">
+        <label>🔍 Filter by Account</label>
+        <select id="entryAccountFilter" onchange="renderEntries()">
+          <option value="all">All Accounts</option>
+        </select>
+      </div>
+    </div>
+    <div class="form-grid" style="margin-bottom:1rem">
+      <div class="form-group">
+        <label>📅 From Date</label>
+        <input type="date" id="entryDateFrom" onchange="renderEntries()" />
+      </div>
+  
+      <div class="form-group">
+        <label>📅 To Date</label>
+        <input type="date" id="entryDateTo" onchange="renderEntries()" />
+      </div>
+    </div>
+    <div class="card-title">📋 Saved Entries</div>
+    <div id="entriesContainer"></div>
+  </div>
+</div>
+
+<script src="accounts.js"></script>
+<script>
+  let lineCount = 0;
+
+
+  window.onload = () => {
+    fillEntryAccountFilter();
+    document.getElementById('entryDate').valueAsDate = new Date();
+    updateEntryNumber();
+    addLine('debit'); 
+    addLine('credit');
+    renderEntries();
+  };
+
+  function handleExcel(event) {
+    const file = event.target.files[0];
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const data = new Uint8Array(e.target.result);
+      const workbook = XLSX.read(data, { type: 'array' });
+      const sheet = workbook.Sheets[workbook.SheetNames[0]];
+      const json = XLSX.utils.sheet_to_json(sheet);
+      
+      const entries = loadEntries();
+      json.forEach(row => {
+        const entry = {
+          id: `QID-${String(entries.length + 1).padStart(4, '0')}`,
+          date: row.Date || new Date().toISOString().split('T')[0],
+          desc: row.Description || "Excel Import",
+          lines: [
+            { code: row.DebitAccount, debit: parseFloat(row.Amount) || 0, credit: 0 },
+            { code: row.CreditAccount, debit: 0, credit: parseFloat(row.Amount) || 0 }
+          ]
+        };
+        entries.push(entry);
+      });
+      saveEntries(entries);
+      renderEntries();
+      alert("Import Successful!");
+    };
+    reader.readAsArrayBuffer(file);
+  }
+
+  function updateEntryNumber() {
+    const entries = loadEntries();
+    document.getElementById('entryNumber').value = `QID-${String(entries.length + 1).padStart(4, '0')}`;
+  }
+
+  function addLine(defaultSide = '') {
+    lineCount++;
+    const id = `line_${lineCount}`;
+    const accounts = typeof getLeafAccounts === 'function' ? getLeafAccounts() : [];
+
+    const div = document.createElement('div');
+    div.className = 'line-item';
+    div.id = id;
+    div.innerHTML = `
+      <div class="form-group"><select onchange="calcTotals()">
+          <option value="">-- Select Account --</option>
+          ${accounts.map(a => `<option value="${a.code}">${a.code} | ${a.name}</option>`).join('')}
+      </select></div>
+      <div class="form-group"><select class="side-select" onchange="updateSideColor(this); calcTotals()">
+          <option value="debit" ${defaultSide === 'debit' ? 'selected' : ''}>Debit ↑</option>
+          <option value="credit" ${defaultSide === 'credit' ? 'selected' : ''}>Credit ↓</option>
+      </select></div>
+      <div class="form-group"><input type="number" step="0.01" class="amount-input" oninput="calcTotals()" placeholder="0.00" /></div>
+      <button class="btn btn-danger" onclick="removeLine('${id}')">✕</button>
+    `;
+    document.getElementById('lineItems').appendChild(div);
+    updateSideColor(div.querySelector('.side-select'));
+  }
+
+  function updateSideColor(sel) {
+    sel.classList.toggle('side-debit', sel.value === 'debit');
+    sel.classList.toggle('side-credit', sel.value === 'credit');
+  }
+
+  function calcTotals() {
+    let d = 0, c = 0;
+    document.querySelectorAll('.line-item').forEach(row => {
+      const side = row.querySelector('.side-select').value;
+      const amt = parseFloat(row.querySelector('.amount-input').value) || 0;
+      if (side === 'debit') d += amt; else c += amt;
+    });
+
+    d = Math.round(d * 100) / 100;
+    c = Math.round(c * 100) / 100;
+
+    document.getElementById('totalDebit').textContent = d.toFixed(2);
+    document.getElementById('totalCredit').textContent = c.toFixed(2);
+    const diff = Math.abs(d - c);
+    document.getElementById('balanceDiff').textContent = diff.toFixed(2);
+    document.getElementById('balanceCard').style.borderColor = diff < 0.01 ? 'var(--green)' : 'var(--red)';
+  }
+
+  function saveEntry() {
+    const d = parseFloat(document.getElementById('totalDebit').textContent);
+    const c = parseFloat(document.getElementById('totalCredit').textContent);
+    
+    if (Math.abs(d - c) > 0.01 || d === 0) {
+      alert("Entry is not balanced!");
+      return;
+    }
+
+    const entry = {
+      id: document.getElementById('entryNumber').value,
+      date: document.getElementById('entryDate').value,
+      desc: document.getElementById('entryDesc').value,
+      lines: []
+    };
+
+    document.querySelectorAll('.line-item').forEach(row => {
+        entry.lines.push({
+            code: row.querySelector('select').value,
+            debit: row.querySelector('.side-select').value === 'debit' ? parseFloat(row.querySelector('.amount-input').value) : 0,
+            credit: row.querySelector('.side-select').value === 'credit' ? parseFloat(row.querySelector('.amount-input').value) : 0
+        });
+    });
+
+    const entries = loadEntries();
+    entries.push(entry);
+    saveEntries(entries);
+    window.dispatchEvent(new Event("journal_updated"));
+    clearForm();
+    renderEntries();
+  }
+
+  function loadEntries() { return JSON.parse(localStorage.getItem('journal_entries') || '[]'); }
+  function saveEntries(e) { localStorage.setItem('journal_entries', JSON.stringify(e)); }
+  function clearForm() { location.reload(); }
+
+  function renderEntries() {
+    const container = document.getElementById('entriesContainer');
+    let entries = loadEntries();
+
+    const filter = document.getElementById('entryAccountFilter')?.value || 'all';
+    const fromDate = document.getElementById('entryDateFrom')?.value;
+    const toDate = document.getElementById('entryDateTo')?.value;
+
+    if (fromDate) {
+      entries = entries.filter(e => new Date(e.date) >= new Date(fromDate));
+    }
+    
+    if (toDate) {
+      entries = entries.filter(e => new Date(e.date) <= new Date(toDate));
+    }
+    
+    if (filter !== 'all') {
+      entries = entries
+      .map(e => {
+        const filteredLines = e.lines.filter(l =>
+        l.code.trim().startsWith(filter)
+      );
+      
+      return {...e, lines: filteredLines };
+    })
+    .filter(e => e.lines.length > 0);
+  }
+
+container.innerHTML = entries.map(e => `
+        <div style="border:1px solid #ddd; margin: 10px 0; padding: 10px;">
+            <strong>${e.id} - ${e.date}</strong>: ${e.desc}
+            <hr>
+            ${e.lines.map(l => {
+  const acc = getAccount(l.code);
+  return `
+    <div style="display:flex; gap:10px; flex-wrap:wrap; margin:4px 0;">
+      <span><strong>${acc?.name || 'Unknown'}</strong></span>
+      <span style="color:gray">(${l.code})</span>
+      <span>${acc?.type || ''}</span>
+      <span style="color:${l.debit ? 'green' : 'red'}">
+        ${l.debit ? 'Dr ' + l.debit : 'Cr ' + l.credit}
+      </span>
+    </div>
+  `;
+}).join('')}
+</div>
+`).join('');
+}
+
+function fillEntryAccountFilter() {
+  const select = document.getElementById('entryAccountFilter');
+  const accounts = loadAccounts().filter(a => a.level <= 3);
+
+  select.innerHTML = `<option value="all">All Accounts</option>` +
+    accounts.map(a => `
+      <option value="${a.code}">
+        ${a.code} - ${a.name}
+      </option>
+    `).join('');
+}
+
+</script>
+</body>
+</html>

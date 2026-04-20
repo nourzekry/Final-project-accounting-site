@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Balance Sheet - Accounting System</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+
+<nav class="navbar">
+  <div class="logo">⚖️ <span>Accounting</span> System</div>
+  <ul class="nav-links">
+    <li><a href="index.html">📝 Entries</a></li>
+    <li><a href="Trial-balance.html">📊 Trial Balance</a></li>
+    <li><a href="income-statement.html">📈 Income Statement</a></li>
+    <li><a href="balance-sheet.html" class="active">🏦 Balance Sheet</a></li>
+    <li><a href="dashboard.html">🖥️ Dashboard</a></li>
+    <li><a href="accountsmanager.html">🗂️ Accounts</a></li>
+  </ul>
+</nav>
+
+
+<div class="page">
+  <div class="page-header">
+    <h1>🏦 Balance Sheet</h1>
+    <p>Assets = Liabilities + Equity</p>
+  </div>
+
+  <div class="card" style="margin-bottom:1.5rem">
+    <div class="form-grid">
+      <div class="form-group">
+        <label>📅 As of Date</label>
+        <input type="date" id="asOfDate" onchange="render()" />
+      </div>
+      <div class="form-group" style="justify-content:flex-end;flex-direction:row;align-items:flex-end;gap:0.5rem">
+        <button class="btn btn-primary" onclick="window.print()">🖨️ Print Report</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="balanceCheck" style="margin-bottom:1.5rem"></div>
+  <div class="stats-grid" id="statsRow" style="margin-bottom:1.5rem"></div>
+
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:1.5rem">
+    <div>
+      <div class="card" style="margin-bottom:1.5rem">
+        <div class="card-title" style="color:var(--blue)">🏢 Assets</div>
+        <div class="section-label">Non-Current Assets</div>
+        <div class="table-wrap"><table id="fixedAssetsTable"><tbody></tbody></table></div>
+        
+        <div class="section-label">Current Assets</div>
+        <div class="table-wrap"><table id="currentAssetsTable"><tbody></tbody></table></div>
+
+        <div style="background:rgba(96,165,250,0.1); border-radius:8px; padding:1rem; display:flex; justify-content:space-between;">
+          <span style="font-weight:700">Total Assets</span>
+          <span style="font-weight:800; color:var(--blue)" id="totalAssets">0.00</span>
+        </div>
+      </div>
+    </div>
+
+    <div>
+      <div class="card" style="margin-bottom:1rem">
+        <div class="card-title" style="color:var(--red)">📋 Liabilities</div>
+        <div class="section-label">Long-term Liabilities</div>
+        <div class="table-wrap"><table id="nonCurrLiabTable"><tbody></tbody></table></div>
+
+        <div class="section-label">Current Liabilities</div>
+        <div class="table-wrap"><table id="currLiabTable"><tbody></tbody></table></div>
+
+        <div style="background:rgba(248,113,113,0.1); border-radius:8px; padding:1rem; display:flex; justify-content:space-between;">
+          <span style="font-weight:600">Total Liabilities</span>
+          <span style="font-weight:700; color:var(--red)" id="totalLiab">0.00</span>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title" style="color:var(--accent)">💰 Equity</div>
+        <div class="table-wrap"><table id="equityTable"><tbody></tbody></table></div>
+
+        <div style="background:rgba(201,169,110,0.2); border:2px solid var(--accent); border-radius:8px; padding:1rem; display:flex; justify-content:space-between;">
+          <span style="font-weight:700">Total Liabilities + Equity</span>
+          <span style="font-weight:800; color:var(--accent)" id="totalLiabEquity">0.00</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="accounts.js"></script>
+<script>
+
+  function getNetIncome() {
+    const entries = loadEntries();
+    
+    let rev = 0;
+    let exp = 0;
+  
+    entries.forEach(e => {
+      e.lines.forEach(l => {
+        const acc = getAccount(l.code);
+        if (!acc) return;
+      
+        if (acc.type === 'revenue') {
+          rev += (l.credit - l.debit);
+        }
+      
+        if (acc.type === 'expense') {
+          exp += (l.debit - l.credit);
+        }
+      });
+    });
+  
+    return rev - exp;
+  }
+
+  window.onload = () => {
+    document.getElementById('asOfDate').valueAsDate = new Date();
+    render();
+  };
+
+
+
+  function render() {
+  let entries = loadEntries();
+  const asOf = document.getElementById('asOfDate').value;
+  if (asOf) entries = entries.filter(e => e.date <= asOf);
+
+  const currentPeriodProfit = getNetIncome();
+  const map = {};
+
+  entries.forEach(entry => {
+    entry.lines.forEach(line => {
+
+      const acc = getAccount(line.code);
+      if (!acc) return; // 👈 أمان
+
+      const debit = parseFloat(line.debit) || 0;
+      const credit = parseFloat(line.credit) || 0;
+
+      // const currentPeriodProfit = getNetIncome();
+      
+      // assets / liabilities / equity
+      if (['asset', 'liability', 'equity'].includes(acc.type)) { 
+        
+        if (!map[line.code]){
+          map[line.code] = { 
+            code: line.code, 
+            name: acc.name, 
+            type: acc.type, 
+            balance: 0
+          };
+        }
+
+        const change = (acc.type === 'asset')
+          ? (debit - credit)
+          : (credit - debit);
+
+        map[line.code].balance += change;
+      }
+
+    });
+  });
+
+      const rows = Object.values(map);
+
+    const fixed = rows.filter(r => r.type === 'asset' && r.code.startsWith('101'));
+    const currentA = rows.filter(r => r.type === 'asset' && !r.code.startsWith('101'));
+    const totalAssets = rows.filter(r => r.type === 'asset').reduce((s, r) => s + r.balance, 0);
+
+    const longTerm = rows.filter(r => r.type === 'liability' && r.code.startsWith('202'));
+    const currentL = rows.filter(r => r.type === 'liability' && !r.code.startsWith('202'));
+    const totalLiab = rows.filter(r => r.type === 'liability').reduce((s, r) => s + r.balance, 0);
+
+    let equityRows = rows.filter(r => r.type === 'equity');
+    const totalEquity = equityRows.reduce((s, r) => s + r.balance, 0) + currentPeriodProfit;
+
+    const totalLiabEquity = totalLiab + totalEquity;
+    const diff = Math.abs(totalAssets - totalLiabEquity);
+    const isBalanced = diff < 0.01;
+
+    document.getElementById('balanceCheck').innerHTML = isBalanced 
+      ? `<div class="alert alert-success">✅ Balanced: Assets = Liabilities + Equity</div>` 
+      : `<div class="alert alert-error">⚠️ Out of Balance! Difference: ${fmt(diff)}</div>`;
+
+    document.getElementById('statsRow').innerHTML = `
+      <div class="stat-card blue"><div class="stat-label">Total Assets</div><div class="stat-value">${fmt(totalAssets)}</div></div>
+      <div class="stat-card red"><div class="stat-label">Total Liabilities</div><div class="stat-value">${fmt(totalLiab)}</div></div>
+      <div class="stat-card gold"><div class="stat-label">Total Equity</div><div class="stat-value">${fmt(totalEquity)}</div></div>
+    `;
+
+        fillTable('fixedAssetsTable', fixed);
+    fillTable('currentAssetsTable', currentA);
+    fillTable('nonCurrLiabTable', longTerm);
+    fillTable('currLiabTable', currentL);
+
+    const eqBody = document.getElementById('equityTable');
+    eqBody.innerHTML = equityRows.map(r => `<tr><td>${r.name}</td><td style="text-align:right">${fmt(r.balance)}</td></tr>`).join('') +
+                       `<tr><td>Current Period Profit/Loss</td><td style="text-align:right">${fmt(currentPeriodProfit)}</td></tr>`;
+
+    document.getElementById('totalAssets').textContent = fmt(totalAssets);
+    document.getElementById('totalLiab').textContent = fmt(totalLiab);
+    document.getElementById('totalLiabEquity').textContent = fmt(totalLiabEquity);
+  }
+  
+  
+  function fillTable(id, rows) {
+    const table = document.getElementById(id);
+    if (rows.length === 0) {
+      table.innerHTML = `<tr><td style="color:#999; text-align:center">No records found</td></tr>`;
+      return;
+    }
+    table.innerHTML = rows.map(r => `
+      <tr><td>${r.name}</td><td style="text-align:right; font-weight:600">${fmt(r.balance)}</td></tr>
+    `).join('');
+  }
+
+
+
+  function fmt(n) { return n.toLocaleString('en-US', { minimumFractionDigits: 2 }); }
+  function loadEntries() { return JSON.parse(localStorage.getItem('journal_entries') || '[]'); }
+</script>
+</body>
+</html>
